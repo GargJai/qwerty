@@ -46,8 +46,6 @@ wss.on(CONNECTION, (socket) => {
         if (EVENT === CREATE) {
             const gameId = uuidv4();
             const game = new Game(gameId);
-            game.sockets = [];
-            game.progress = [];
         
             socket.game = game;
             socket.master = true;
@@ -55,17 +53,21 @@ wss.on(CONNECTION, (socket) => {
         
             game.sockets.push(socket);
             game.progress.push(0);
-        
+            game.WPMS.push(0); 
+            game.ranks.push(null); 
+
             games.set(gameId, game);
         
             console.log(`Game created by ${socket.uid}: ${gameId}`);
 
             socket.uemit({
+                type: "UID", 
+                ind: 0, 
+            })
+
+            socket.uemit({
                 type: CREATE,
-                id: gameId,
-                cnt: 1, 
-                progress: game.progress,
-                state: game.state,
+                ...game.getState(), 
             });
         }
 
@@ -98,15 +100,19 @@ wss.on(CONNECTION, (socket) => {
 
                 game.sockets.push(socket);
                 game.progress.push(0);
+                game.WPMS.push(0); 
+                game.ranks.push(null); 
 
                 console.log(`User ${socket.uid} joined game: ${id}`);
 
+                socket.uemit({
+                    type: "UID", 
+                    ind: socket.game.progress.length - 1,
+                })
+
                 socket.ubroadcast({
                     type: SYNC,
-                    id: id, 
-                    cnt: game.sockets.length,
-                    progress: game.progress,
-                    state: game.state,
+                    ...game.getState(), 
                 });
 
             } else {
@@ -116,22 +122,25 @@ wss.on(CONNECTION, (socket) => {
         } 
         
         else if (EVENT === SET_PROGRESS) {
-            const { value } = msg;
+            const { myProgress, myWPM } = msg;
 
             if (socket.game) {
-                console.log("special Call : " + value); 
-                socket.game.progress[socket.ind] = value;
+                socket.game.progress[socket.ind] = myProgress;
+                socket.game.WPMS[socket.ind] = myWPM; ;
+                
+                if (myProgress === 1 && socket.game.ranks[socket.ind] === null) {
+                    socket.game.setRank(socket.ind);
+                }
+
                 
                 socket.ubroadcast({
                     type: SYNC,
-                    id: socket.game.id,
-                    cnt: socket.game.sockets.length,
-                    progress: socket.game.progress,
-                    state: socket.game.state,
+                    ...socket.game.getState(), 
                 });
-                
 
-                console.log(`Progress set by ${socket.uid} in game ${socket.game.id}:`, value);
+                console.log(`Progress set by ${socket.uid} in game ${socket.game.id}:`, myProgress);
+                console.log(`WPMS set by ${socket.uid} in game ${socket.game.id}:`, myWPM);
+
             } else {
                 console.warn(`SET_PROGRESS received but user ${socket.uid} is not in a game.`);
             }
